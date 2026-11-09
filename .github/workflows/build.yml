@@ -1,0 +1,43 @@
+name: Build GKI 6.6 Halium
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git curl python3 bison flex libssl-dev libelf-dev zip
+          curl https://storage.googleapis.com/git-repo-downloads/repo > /usr/local/bin/repo
+          chmod a+x /usr/local/bin/repo
+
+      - name: Sync GKI Source
+        run: |
+          mkdir kernel_workspace && cd kernel_workspace
+          repo init -u https://android.googlesource.com/kernel/manifest -b common-android15-6.6
+          repo sync -j$(nproc) --force-sync
+
+      - name: Apply Halium Patches
+        run: |
+          cd kernel_workspace/common
+          git clone https://github.com/Halium/hybris-patches.git
+          cd hybris-patches
+          for patch in *.patch; do
+            echo "Applying $patch"
+            git apply --reject "$patch" || echo "Patch $patch failed, continuing..."
+          done
+
+      - name: Build Kernel
+        run: |
+          cd kernel_workspace
+          tools/bazel build //common:kernel_aarch64_dist --config=fast
+
+      - name: Upload Image
+        uses: actions/upload-artifact@v4
+        with:
+          name: gki-6.6-halium-image
+          path: kernel_workspace/out/dist/*
