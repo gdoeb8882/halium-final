@@ -1,4 +1,4 @@
-name: Build Halium Boot Image (Fixed)
+name: Build Halium Boot Image (Root Fix)
 on: [push, workflow_dispatch]
 jobs:
   build-boot:
@@ -18,13 +18,11 @@ jobs:
         run: |
           git clone https://github.com/Halium/initramfs-tools-halium.git
           cd initramfs-tools-halium
-          
-          # إصلاح الإصدار القديم
           sed -i 's/stretch/bookworm/g' build-initrd.sh
           sed -i 's/qemu-debootstrap/debootstrap/g' build-initrd.sh
           
-          # حقن ملف الإعدادات الوهمي داخل السكربت قبل تنفيذ البناء
-          sed -i '/update-initramfs/i mkdir -p /boot \&\& echo "CONFIG_RD_GZIP=y" > /boot/config-touch-arm64' build-initrd.sh
+          # حقن الأمر داخل السكربت لإنشاء ملف الإعدادات داخل الـ chroot
+          sed -i '/update-initramfs/i \ \ \ \ echo "CONFIG_RD_GZIP=y" > /boot/config-touch-arm64' build-initrd.sh
           
           chmod +x build-initrd.sh
           sudo RELEASE=bookworm ./build-initrd.sh -a arm64
