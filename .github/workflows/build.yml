@@ -1,4 +1,4 @@
-name: Build Halium Boot Image (Root Fix)
+name: Build Halium Boot Image (Exact Fix)
 on: [push, workflow_dispatch]
 jobs:
   build-boot:
@@ -19,13 +19,13 @@ jobs:
           git clone https://github.com/Halium/initramfs-tools-halium.git
           cd initramfs-tools-halium
           
-          # إصلاح إصدار Debian وأداة debootstrap
+          # 1. إصلاح الإصدار والأدوات
           sed -i 's/stretch/bookworm/g' build-initrd.sh
           sed -i 's/qemu-debootstrap/debootstrap/g' build-initrd.sh
           
-          # حقن أمر إنشاء ملف الإعدادات داخل الـ chroot قبل تحديث initramfs
-          # هذا يضمن أن الملف موجود في المكان الصحيح الذي تبحث فيه الأداة
-          sed -i '/update-initramfs -c -k all/i \ \ \ \ mkdir -p /boot \&\& echo "CONFIG_RD_GZIP=y" > /boot/config-touch-arm64' build-initrd.sh
+          # 2. حقن الأمر في السطر الصحيح الذي يظهر في سجلك
+          # نبحث عن update-initramfs -c -k touch-arm64 ونضع قبله إنشاء الملف
+          sed -i 's/update-initramfs -c -k touch-arm64/mkdir -p \/boot \&\& echo "CONFIG_RD_GZIP=y" > \/boot\/config-touch-arm64 \&\& update-initramfs -c -k touch-arm64/' build-initrd.sh
           
           chmod +x build-initrd.sh
           sudo RELEASE=bookworm ./build-initrd.sh -a arm64
