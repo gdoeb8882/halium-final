@@ -1,70 +1,43 @@
-name: Build GKI 6.6 Halium Release
+name: Build Halium Boot Image
 on: [push, workflow_dispatch]
-
 jobs:
-  build:
+  build-boot:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # إعطاء صلاحية للسيرفر لإنشاء Release
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Cache Repo Source
-        uses: actions/cache@v4
-        with:
-          path: |
-            kernel_workspace/.repo
-            kernel_workspace/common
-          key: ${{ runner.os }}-gki-source-v2
-
-      - name: Cache Bazel Output
-        uses: actions/cache@v4
-        with:
-          path: kernel_workspace/out
-          key: ${{ runner.os }}-gki-bazel-v2
-
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y git curl python3 bison flex libssl-dev libelf-dev zip
-          curl https://storage.googleapis.com/git-repo-downloads/repo > /usr/local/bin/repo
-          chmod a+x /usr/local/bin/repo
+          sudo apt-get install -y git debootstrap qemu-user-static binfmt-support cpio gzip
 
-      - name: Sync GKI Source
+      - name: Build Initramfs
         run: |
-          mkdir -p kernel_workspace && cd kernel_workspace
-          repo init -u https://android.googlesource.com/kernel/manifest -b common-android15-6.6
-          repo sync -j$(nproc) --force-sync
+          git clone https://github.com/Halium/initramfs-tools-halium.git
+          cd initramfs-tools-halium
+          sed -i 's/stretch/bookworm/g' build-initrd.sh
+          chmod +x build-initrd.sh
+          RELEASE=bookworm ./build-initrd.sh -a arm64
 
-      - name: Apply Halium Patches
+      - name: Download Kernel
         run: |
-          cd kernel_workspace/common
-          git clone https://github.com/Halium/hybris-patches.git
-          cd hybris-patches
-          for patch in *.patch; do
-            echo "Applying $patch"
-            git apply --reject "$patch" || echo "Patch $patch failed, continuing..."
-          done
+          wget https://github.com/gdoeb8882/halium-final/releases/download/v1.0-gki6.6/halium-kernel.zip
+          unzip -j halium-kernel.zip -d kernel_dir
 
-      - name: Build Kernel
+      - name: Create Boot Image
         run: |
-          cd kernel_workspace
-          tools/bazel build //common:kernel_aarch64_dist --config=fast
+          mkbootimg --kernel kernel_dir/Image \
+                    --ramdisk initramfs-tools-halium/out/initrd.img-touch-arm64 \
+                    --header_version 4 \
+                    --pagesize 4096 \
+                    --output halium-boot.img
 
-      # الخطوة الجذرية: البحث عن الملف وضغطه بدون أي أوامر نسخ معقدة
-      - name: Prepare Zip
-        run: |
-          cd kernel_workspace
-          echo "جاري البحث عن ملف النواة وضغطه..."
-          # يبحث عن الملف في كل مكان ويضعه في ملف مضغوط مباشرة
-          find . -name "Image" -o -name "Image.lz4" -o -name "Image.gz" | head -n 1 | xargs zip -j halium-kernel.zip
-          ls -lh halium-kernel.zip
-
-      # الحل الجذري: النشر في الإصدارات (Releases) بدلاً من Artifacts
       - name: Publish Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0-gki6.6
-          name: Halium GKI 6.6 Kernel
-          files: kernel_workspace/halium-kernel.zip
+          tag_name: v1.0-halium-boot
+          name: Halium Boot Image
+          files: halium-boot.img
