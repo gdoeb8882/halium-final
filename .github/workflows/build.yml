@@ -1,4 +1,4 @@
-name: Build Halium Boot Image
+name: Build Halium Boot Image (Optimized)
 on: [push, workflow_dispatch]
 jobs:
   build-boot:
@@ -12,13 +12,23 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y git debootstrap qemu-user-static binfmt-support cpio gzip
+          sudo apt-get install -y git debootstrap qemu-user-static binfmt-support cpio gzip android-sdk-libsparse-utils
+          # التأكد من وجود mkbootimg، وإن لم يكن موجوداً نثبته من حزمة أخرى
+          if ! command -v mkbootimg &> /dev/null; then
+            sudo apt-get install -y mkbootimg || sudo apt-get install -y android-sdk-platform-tools
+          fi
 
       - name: Build Initramfs
         run: |
+          # 1. إنشاء ملف إعدادات وهمي لتجاوز فحص ضغط gzip
+          sudo mkdir -p /boot
+          echo "CONFIG_RD_GZIP=y" | sudo tee /boot/config-touch-arm64
+
+          # 2. تحميل وبناء الرامديسك
           git clone https://github.com/Halium/initramfs-tools-halium.git
           cd initramfs-tools-halium
           sed -i 's/stretch/bookworm/g' build-initrd.sh
+          sed -i 's/qemu-debootstrap/debootstrap/g' build-initrd.sh
           chmod +x build-initrd.sh
           sudo RELEASE=bookworm ./build-initrd.sh -a arm64
 
@@ -29,15 +39,39 @@ jobs:
 
       - name: Create Boot Image
         run: |
-          mkbootimg --kernel kernel_dir/Image \
+          # البحث عن ملف Image في حال كان داخل مجلد فرعي
+          KERNEL_PATH=$(find kernel_dir -name "Image" -type f | head -n 1)
+          if [ -z "$KERNEL_PATH" ]; then
+            echo "خطأ: لم يتم العثور على ملف Image"
+            exit 1
+          fi
+          
+          echo "تم العثور على النواة في: $KERNEL_PATH"
+          echo "--- حجم النواة ---"
+          ls -lh "$KERNEL_PATH"
+          
+          echo "--- حجم الرامديسك ---"
+          ls -lh initramfs-tools-halium/out/initrd.img-touch-arm64
+          
+          # الدمج
+          mkbootimg --kernel "$KERNEL_PATH" \
                     --ramdisk initramfs-tools-halium/out/initrd.img-touch-arm64 \
                     --header_version 4 \
                     --pagesize 4096 \
                     --output halium-boot.img
+          
+          echo "--- حجم ملف البوت الناتج ---"
+          ls -lh halium-boot.img
+          
+          # التحقق من أن الملف ليس فارغاً
+          if [ ! -s halium-boot.img ]; then
+            echo "خطأ: ملف halium-boot.img فارغ!"
+            exit 1
+          fi
 
       - name: Publish Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0-halium-boot
-          name: Halium Boot Image
+          tag_name: v1.0-halium-boot-final
+          name: Halium Boot Image (Final)
           files: halium-boot.img
