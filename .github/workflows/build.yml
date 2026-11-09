@@ -20,7 +20,7 @@ jobs:
           cd initramfs-tools-halium
           sed -i 's/stretch/bookworm/g' build-initrd.sh
           chmod +x build-initrd.sh
-          RELEASE=bookworm ./build-initrd.sh -a arm64
+          sudo RELEASE=bookworm ./build-initrd.sh -a arm64
 
       - name: Download Kernel
         run: |
