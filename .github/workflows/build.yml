@@ -1,28 +1,28 @@
-name: Build GKI 6.6 Halium with Cache
+name: Build GKI 6.6 Halium Release
 on: [push, workflow_dispatch]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # إعطاء صلاحية للسيرفر لإنشاء Release
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 1. حفظ (Cache) لملفات المصدر (السورس) لتجنب تحميل 20 جيجا في كل مرة
       - name: Cache Repo Source
         uses: actions/cache@v4
         with:
           path: |
             kernel_workspace/.repo
             kernel_workspace/common
-          key: ${{ runner.os }}-gki-source-v1
+          key: ${{ runner.os }}-gki-source-v2
 
-      # 2. حفظ (Cache) لملفات البناء (Bazel Output)
       - name: Cache Bazel Output
         uses: actions/cache@v4
         with:
           path: kernel_workspace/out
-          key: ${{ runner.os }}-gki-bazel-v1
+          key: ${{ runner.os }}-gki-bazel-v2
 
       - name: Install Dependencies
         run: |
@@ -51,12 +51,20 @@ jobs:
         run: |
           cd kernel_workspace
           tools/bazel build //common:kernel_aarch64_dist --config=fast
-          mkdir -p final_output
-          find . -name "Image" -o -name "Image.lz4" -o -name "Image.gz" | xargs -I {} cp {} final_output/
-          ls -R final_output
 
-      - name: Upload Image
-        uses: actions/upload-artifact@v4
+      # الخطوة الجذرية: البحث عن الملف وضغطه بدون أي أوامر نسخ معقدة
+      - name: Prepare Zip
+        run: |
+          cd kernel_workspace
+          echo "جاري البحث عن ملف النواة وضغطه..."
+          # يبحث عن الملف في كل مكان ويضعه في ملف مضغوط مباشرة
+          find . -name "Image" -o -name "Image.lz4" -o -name "Image.gz" | head -n 1 | xargs zip -j halium-kernel.zip
+          ls -lh halium-kernel.zip
+
+      # الحل الجذري: النشر في الإصدارات (Releases) بدلاً من Artifacts
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: gki-6.6-halium-image
-          path: kernel_workspace/final_output/*
+          tag_name: v1.0-gki6.6
+          name: Halium GKI 6.6 Kernel
+          files: kernel_workspace/halium-kernel.zip
