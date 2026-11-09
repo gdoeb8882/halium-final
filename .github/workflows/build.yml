@@ -1,4 +1,4 @@
-name: Build GKI 6.6 Halium
+name: Build GKI 6.6 Halium with Cache
 on: [push, workflow_dispatch]
 
 jobs:
@@ -7,6 +7,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # 1. حفظ (Cache) لملفات المصدر (السورس) لتجنب تحميل 20 جيجا في كل مرة
+      - name: Cache Repo Source
+        uses: actions/cache@v4
+        with:
+          path: |
+            kernel_workspace/.repo
+            kernel_workspace/common
+          key: ${{ runner.os }}-gki-source-v1
+
+      # 2. حفظ (Cache) لملفات البناء (Bazel Output)
+      - name: Cache Bazel Output
+        uses: actions/cache@v4
+        with:
+          path: kernel_workspace/out
+          key: ${{ runner.os }}-gki-bazel-v1
 
       - name: Install Dependencies
         run: |
@@ -17,7 +33,7 @@ jobs:
 
       - name: Sync GKI Source
         run: |
-          mkdir kernel_workspace && cd kernel_workspace
+          mkdir -p kernel_workspace && cd kernel_workspace
           repo init -u https://android.googlesource.com/kernel/manifest -b common-android15-6.6
           repo sync -j$(nproc) --force-sync
 
@@ -35,7 +51,6 @@ jobs:
         run: |
           cd kernel_workspace
           tools/bazel build //common:kernel_aarch64_dist --config=fast
-          # إنشاء مجلد مخصص وجمع ملف النواة فيه مهما كان مكانه
           mkdir -p final_output
           find . -name "Image" -o -name "Image.lz4" -o -name "Image.gz" | xargs -I {} cp {} final_output/
           ls -R final_output
