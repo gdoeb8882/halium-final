@@ -35,9 +35,13 @@ jobs:
         run: |
           cd kernel_workspace
           tools/bazel build //common:kernel_aarch64_dist --config=fast
+          # إنشاء مجلد مخصص وجمع ملف النواة فيه مهما كان مكانه
+          mkdir -p final_output
+          find . -name "Image" -o -name "Image.lz4" -o -name "Image.gz" | xargs -I {} cp {} final_output/
+          ls -R final_output
 
       - name: Upload Image
         uses: actions/upload-artifact@v4
         with:
           name: gki-6.6-halium-image
-          path: kernel_workspace/out/dist/*
+          path: kernel_workspace/final_output/*
